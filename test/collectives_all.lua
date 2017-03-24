@@ -75,6 +75,7 @@ mpi.start{withCuda = (config.processor ~= "cpu"),
           withIPCGroups = (config.tests ~= 'nccl'),
           withCartesianCommunicator = config.cartesian}
 
+print(mpi.collectiveAvailability())
 if config.hierarchical == 'true' then
   mpi.C.torchmpi_set_hierarchical_collectives()
 else
@@ -349,7 +350,58 @@ tests.sendreceivenext.communicationVolumeGB = function(input)
    local elemSize = 4
    return input:nElement() * elemSize / 1e9
 end
+-------------------------------- allgather --------------------------------
+tests.allgather = {}
 
+tests.allgather.test = function(input, output, firstRun)
+   local ns = getCollectives()
+   local availability = collectiveAvailable(ns, "allgatherTensor")
+   if availability ~= 'available' then
+      return availability -- exit test loop
+   end
+
+   if config.async then
+      asyncTimer:reset()
+   end
+
+   local handle = ns.allgatherTensor(input, output)
+
+   if config.async and not firstRun then
+      asyncTimer:stop()
+      if asyncTimer:time().real >= 5e-5 then
+         print(string.format(
+            'Warning: Async allreduce launch took %f (expected < %f) for size %d',
+            asyncTimer:time().real, 5e-5, input:nElement()))
+      end
+   end
+
+   return handle
+end
+
+-- Careful, precision counts here once we reach a certain size
+tests.allgather.check = function(input, output, inputClone)
+   local min_val = 0
+   local max_val = mpi.size() - 1
+   local size_val = input:nElement() * mpi.size()
+   local min, max = output:min(), output:max()
+   if min ~= min_val or max ~= max_val then
+      error(('[%d/%d] %f-%f vs expected %f-%f (size %d) vs expected size %d\n'):format(
+            mpi:rank(), mpi:size(), min, max, min_val, max_val,
+            output:nElement(), size_val))
+   end
+
+   -- check inPlace didn't write to input
+   if not config.inPlace then
+      assert((input - inputClone):abs():max() == 0,
+         "input changed after non inplace collective")
+   end
+end
+
+-- Assumes a pipelined implementation of each gather (equivalent to broadcast above)
+tests.allgather.communicationVolumeGB = function(input)
+   local elemSize = 4
+   return (input:nElement() * (mpi.size() -1 )* elemSize) / 1e9
+end
 -------------------------------- barrier --------------------------------
 tests.mpiBarrier = {}
 tests.mpiBarrier.test = function()
@@ -377,16 +429,18 @@ local function setImplemented()
       tests.reduce.implemented = true
       tests.allreduce.implemented = true
       tests.sendreceivenext.implemented = true
+      tests.broadcast.implemented = config.sync and not config.gpu
    elseif config.tests == "basic" then
       -- No async sendreceivenext
-      tests.sendreceivenext.implemented = not config.async
-      tests.mpiBarrier.implemented = true
+      --tests.sendreceivenext.implemented = not config.async
+      --tests.mpiBarrier.implemented = true
       -- Disable because it deadlocks on multi-machines
-      tests.customBarrier.implemented = false
-      tests.broadcast.implemented = true
+      --tests.customBarrier.implemented = false
+      --tests.broadcast.implemented = true
       -- No async sendreceivenextGPU reduce
-      tests.reduce.implemented = not (config.async and config.gpu)
-      tests.allreduce.implemented = true
+      --tests.reduce.implemented = not (config.async and config.gpu)
+      --tests.allreduce.implemented = true
+      tests.allgather.implemented = true
    elseif config.tests == "p2p" then
       tests.broadcast.implemented = true
       tests.allreduce.implemented = true

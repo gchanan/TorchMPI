@@ -58,6 +58,12 @@ namespace torch { namespace mpi {
       &input, 1, mpiType<T>(), dst, kDefaultTag, root, kDefaultTag);
   }
 
+  /*template<typename T> void allgatherScalar(
+      T& val, T *dst) {
+    mpi::getMainThreadCommunicator().intraComm.Allgather(
+      &val, 1, mpiType<T>(), &dst, 1, mpiType<T>());
+  }*/
+
 namespace th {
 
 #define PREPARE(tensor)                                                 \
@@ -205,6 +211,31 @@ namespace th {
     PREPARE2(input, output);
 
     allreduceImpl(inputData, outputData, nElement, mpiRedOp, r);
+
+    // TODO: ScopeGuard
+    releaseCollectiveResources(const_cast<CollectiveResources*>(r));
+  }
+
+  template<typename ScalarType>
+  void allgatherImpl(ScalarType* input,
+                     ScalarType* output,
+                     size_t nElement,
+                     const CollectiveResources* r) {
+    r->comm->intraComm.Allgather(
+      input,
+      nElement,
+      mpiType<ScalarType>(),
+      output,
+      nElement,
+      mpiType<ScalarType>());
+  }
+
+  template<typename ScalarType, typename THTensorType>
+  void allgather(THTensorType* input,
+                 THTensorType* output) {
+    PREPARE2(input, output);
+
+    allgatherImpl(inputData, outputData, nElement, r);
 
     // TODO: ScopeGuard
     releaseCollectiveResources(const_cast<CollectiveResources*>(r));
@@ -375,6 +406,29 @@ namespace th {
     return resources::synchronizationHandleFromFuture(futures.size() - 1);
   }
 
+  /*template<typename ScalarType, typename THTensorType>
+  SynchronizationHandle* allgatherAsync(THTensorType* input,
+                                        THTensorType* output)
+  {
+    PREPARE2(input, output);
+
+    MPI_Request req;
+    MPI_Iallgather(
+      inputData,
+      nElement,
+      mpiType<ScalarType>(),
+      outputData,
+      nElementOutput,
+      mpiType<ScalarType>(),
+      r->comm->intraComm,
+      &req);
+
+    // TODO: ScopeGuard
+    releaseCollectiveResources(const_cast<CollectiveResources*>(r));
+
+    return resources::synchronizationHandleFromMPIRequest(
+      enqueueMPIRequest(MPI::Request(req)));
+  }*/
 }} // ns mpi::th
 
 #ifdef TORCH_MPI_GLOO
@@ -636,6 +690,20 @@ SynchronizationHandle* PPCAT(torchmpi_async_p2p_broadcast_, THTensorType)( \
       input, src, dst);                                \
   }
 
+/*********************** Allgather **********************************/
+#define DEFINE_ALLGATHER(ScalarType, THTensorType)              \
+  void PPCAT(torchmpi_allgather_, THTensorType)(                \
+    THTensorType *input, THTensorType *output) {                \
+    torch::mpi::th::allgather<ScalarType, THTensorType>(        \
+      input, output);                                           \
+  }
+
+#define DEFINE_ALLGATHER_ASYNC(ScalarType, THTensorType)                 \
+  SynchronizationHandle* PPCAT(torchmpi_async_allgather_, THTensorType)( \
+    THTensorType *input, THTensorType *output) {                         \
+    return torch::mpi::th::allgatherAsync<ScalarType, THTensorType>(     \
+      input, output);                                                    \
+  }
 /**********************************************************************
  ********************** C Wrapper instantiations **********************
  **********************************************************************/
@@ -661,6 +729,7 @@ SynchronizationHandle* PPCAT(torchmpi_async_p2p_broadcast_, THTensorType)( \
   DEFINE_ALLREDUCE(CPP_TYPE, TH_TENSOR_TYPE);                           \
   DEFINE_ALLREDUCEP2P(CPP_TYPE, TH_TENSOR_TYPE);                        \
   DEFINE_SENDRECEIVE(CPP_TYPE, TH_TENSOR_TYPE);                         \
+  DEFINE_ALLGATHER(CPP_TYPE, TH_TENSOR_TYPE);                           \
                                                                         \
   DEFINE_BROADCAST_ASYNC(CPP_TYPE, TH_TENSOR_TYPE);                     \
   DEFINE_BROADCASTP2P_ASYNC(CPP_TYPE, TH_TENSOR_TYPE);                  \

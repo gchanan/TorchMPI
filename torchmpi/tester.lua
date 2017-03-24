@@ -14,6 +14,7 @@ local tester = {}
 tester.runOneConfig = function(tests, nRuns, nSkip, config, printDebug)
    ---------- Test loop
    for testName, T in pairs(tests) do
+      print("TestName", testName, T)
       if not T.implemented then goto continueTestLoop end
 
       local lower = 8
