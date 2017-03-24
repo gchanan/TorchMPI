@@ -153,7 +153,7 @@ local function declMPI(withCuda)
       end
    end
 
-   def = def .. allreduce_def .. broadcast_def .. reduce_def .. sendreceive_def .. parameterserver_def ..
+   def = def .. allreduce_def .. broadcast_def .. reduce_def .. sendreceive_def .. allgather_def .. parameterserver_def ..
       allreduce_scalar_def .. broadcast_scalar_def .. reduce_scalar_def .. sendreceive_scalar_def ..
    [[
       void torchmpi_start();

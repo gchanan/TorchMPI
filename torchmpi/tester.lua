@@ -14,7 +14,6 @@ local tester = {}
 tester.runOneConfig = function(tests, nRuns, nSkip, config, printDebug)
    ---------- Test loop
    for testName, T in pairs(tests) do
-      print("TestName", testName, T)
       if not T.implemented then goto continueTestLoop end
 
       local lower = 8
@@ -27,7 +26,12 @@ tester.runOneConfig = function(tests, nRuns, nSkip, config, printDebug)
          local input = config.gpu and torch.CudaTensor(size) or torch.FloatTensor(size)
 
          input:fill(mpi.rank())
-         local output = config.inPlace and input or input:clone():normal()
+         local output
+         if testName ~= "allgather" then
+            output = config.inPlace and input or input:clone():normal()
+         else
+            output = torch.FloatTensor(size * mpi.size())
+         end
 
          local timer = torch.Timer()
          timer:stop()

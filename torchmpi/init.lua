@@ -164,7 +164,7 @@ end
 
 MPI.allgatherTensor = function(input, output)
    local fun = 'torchmpi_allgather_TH'..torch.type(input):gsub('torch.', '')
-   return MPI.syncHandle(wrap.executeMPICFun2(fun, input, output or input, rank))
+   return MPI.syncHandle(wrap.executeMPICFun2(fun, input, output))
 end
 
 --------------------- Asynchronous collectives CPU or GPU ----------------------

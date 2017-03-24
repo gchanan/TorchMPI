@@ -75,7 +75,6 @@ mpi.start{withCuda = (config.processor ~= "cpu"),
           withIPCGroups = (config.tests ~= 'nccl'),
           withCartesianCommunicator = config.cartesian}
 
-print(mpi.collectiveAvailability())
 if config.hierarchical == 'true' then
   mpi.C.torchmpi_set_hierarchical_collectives()
 else
@@ -394,6 +393,13 @@ tests.allgather.check = function(input, output, inputClone)
    if not config.inPlace then
       assert((input - inputClone):abs():max() == 0,
          "input changed after non inplace collective")
+   end
+
+   -- sample from each region
+   for i=0,mpi.size()-1 do
+      if (output[i * input:nElement() + 1 ] ~= i) then
+         error('expected %d but got %d\n', output[i * input:nElement() + 1], i)
+      end
    end
 end
 
