@@ -352,6 +352,30 @@ end
 -------------------------------- allgather --------------------------------
 tests.allgather = {}
 
+tests.allgather.startsize = function(size)
+   return math.max(0, math.ceil(size / mpi.size() - (mpi.size() + 1) / 2)) + 1
+end
+
+tests.allgather.outputsize = function(start_size)
+   local end_size = start_size + (mpi.size() - 1)
+   return end_size * (end_size + 1)  / 2  - start_size * (start_size - 1) / 2
+end
+
+tests.allgather.generate = function(size)
+   -- pick an input size that increases by 1 for each rank that in total
+   -- (output size) minimally exceeds size parameter, e.g.
+   -- if size == 10 and mpi.size() == 3, then sizes are {3,4,5}
+   local start_size = tests.allgather.startsize(size)
+   local isize = start_size + mpi.rank()
+   local input = config.gpu and torch.CudaTensor(isize) or torch.FloatTensor(isize)
+   input:fill(mpi.rank())
+
+   local osize = tests.allgather.outputsize(start_size)
+   local output = torch.FloatTensor(osize)
+
+   return input, output
+end
+
 tests.allgather.test = function(input, output, firstRun)
    local ns = getCollectives()
    local availability = collectiveAvailable(ns, "allgatherTensor")
@@ -381,7 +405,8 @@ end
 tests.allgather.check = function(input, output, inputClone)
    local min_val = 0
    local max_val = mpi.size() - 1
-   local size_val = input:nElement() * mpi.size()
+   local start_size = input:nElement() - mpi.rank()
+   local size_val = tests.allgather.outputsize(start_size)
    local min, max = output:min(), output:max()
    if min ~= min_val or max ~= max_val then
       error(('[%d/%d] %f-%f vs expected %f-%f (size %d) vs expected size %d\n'):format(
@@ -396,10 +421,13 @@ tests.allgather.check = function(input, output, inputClone)
    end
 
    -- sample from each region
+   local pos = 1
    for i=0,mpi.size()-1 do
-      if (output[i * input:nElement() + 1 ] ~= i) then
-         error('expected %d but got %d\n', output[i * input:nElement() + 1], i)
+      if (output[pos + i] ~= i) then
+         error(('expected %d but got %d at position %d\n'):format(
+               i, output[pos + i + 1], pos + mpi.size()))
       end
+      pos = pos + start_size + i
    end
 end
 
@@ -436,17 +464,21 @@ local function setImplemented()
       tests.allreduce.implemented = true
       tests.sendreceivenext.implemented = true
       tests.broadcast.implemented = config.sync and not config.gpu
+      tests.allgather.implmented =
+         not (config.async or config.gpu or config.inPlace
+              or config.p2p or config.gloo)
    elseif config.tests == "basic" then
       -- No async sendreceivenext
-      --tests.sendreceivenext.implemented = not config.async
-      --tests.mpiBarrier.implemented = true
+      tests.sendreceivenext.implemented = not config.async
+      tests.mpiBarrier.implemented = true
       -- Disable because it deadlocks on multi-machines
-      --tests.customBarrier.implemented = false
-      --tests.broadcast.implemented = true
+      tests.customBarrier.implemented = false
+      tests.broadcast.implemented = true
       -- No async sendreceivenextGPU reduce
-      --tests.reduce.implemented = not (config.async and config.gpu)
-      --tests.allreduce.implemented = true
-      tests.allgather.implemented = true
+      tests.reduce.implemented = not (config.async and config.gpu)
+      tests.allreduce.implemented = true
+      tests.allgather.implemented =
+         not (config.async or config.gpu or config.inPlace)
    elseif config.tests == "p2p" then
       tests.broadcast.implemented = true
       tests.allreduce.implemented = true

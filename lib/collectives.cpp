@@ -230,12 +230,41 @@ namespace th {
       mpiType<ScalarType>());
   }
 
+  template<typename ScalarType>
+  void allgathervImpl(ScalarType* input,
+                      ScalarType* output,
+                      size_t nElement,
+                      int *counts,
+                      int *displacements,
+                      const CollectiveResources* r) {
+    r->comm->intraComm.Allgatherv(
+      input,
+      nElement,
+      mpiType<ScalarType>(),
+      output,
+      counts,
+      displacements,
+      mpiType<ScalarType>());
+  }
+
   template<typename ScalarType, typename THTensorType>
   void allgather(THTensorType* input,
                  THTensorType* output) {
     PREPARE2(input, output);
 
-    allgatherImpl(inputData, outputData, nElement, r);
+    auto size = commSize(r->comm->intraComm);
+    int counts[size];
+
+    // allgatherv takes int-typed counts / displacements
+    int nElementInt = (int)nElement;
+    allgatherImpl<int>(&nElementInt, counts, 1, r);
+
+    int displacements[size];
+    displacements[0] = 0;
+    for (int i = 1; i < size; ++i) {
+      displacements[i] = counts[i-1] + displacements[i-1];
+    }
+    allgathervImpl<ScalarType>(inputData, outputData, nElement, counts, displacements, r);
 
     // TODO: ScopeGuard
     releaseCollectiveResources(const_cast<CollectiveResources*>(r));
