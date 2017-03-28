@@ -371,7 +371,9 @@ tests.allgather.generate = function(size)
    input:fill(mpi.rank())
 
    local osize = tests.allgather.outputsize(start_size)
-   local output = torch.FloatTensor(osize)
+   -- override meaning of inplace, because it doesn't make much sense for
+   -- allgather.  Instead have it mean if the output needs to be ReAlloced.
+   local output = torch.FloatTensor(config.inPlace and osize or osize / 2)
 
    return input, output
 end
@@ -464,8 +466,8 @@ local function setImplemented()
       tests.allreduce.implemented = true
       tests.sendreceivenext.implemented = true
       tests.broadcast.implemented = config.sync and not config.gpu
-      tests.allgather.implmented =
-         not (config.async or config.gpu or config.inPlace
+      tests.allgather.implemented =
+         not (config.async or config.gpu
               or config.p2p or config.gloo)
    elseif config.tests == "basic" then
       -- No async sendreceivenext
@@ -478,7 +480,7 @@ local function setImplemented()
       tests.reduce.implemented = not (config.async and config.gpu)
       tests.allreduce.implemented = true
       tests.allgather.implemented =
-         not (config.async or config.gpu or config.inPlace)
+         not (config.async or config.gpu)
    elseif config.tests == "p2p" then
       tests.broadcast.implemented = true
       tests.allreduce.implemented = true
