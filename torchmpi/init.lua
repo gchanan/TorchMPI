@@ -162,9 +162,14 @@ MPI.sendreceiveTensor = function(input, src, dst)
    return MPI.syncHandle(wrap.executeMPICFun(fun, input, src, dst))
 end
 
-MPI.allgatherTensor = function(input, output)
+MPI.allgatherTensorDesc = function(input, tensorDesc)
+   local fun = 'torchmpi_allgatherdesc_TH'..torch.type(input):gsub('torch.', '')
+   return MPI.syncHandle(wrap.executeMPICFun(fun, input, tensorDesc))
+end
+
+MPI.allgatherTensor = function(input, output, tensorDesc)
    local fun = 'torchmpi_allgather_TH'..torch.type(input):gsub('torch.', '')
-   return MPI.syncHandle(wrap.executeMPICFun2(fun, input, output))
+   return MPI.syncHandle(wrap.executeMPICFun2(fun, input, output, tensorDesc))
 end
 
 --------------------- Asynchronous collectives CPU or GPU ----------------------
@@ -336,7 +341,7 @@ setupNCCL = function()
    --]]
 end
 
-setupGloo= function()
+setupGloo = function()
    --------------------- Synchronous collectives CPU only -------------------------
    MPI.gloo = {}
 
@@ -396,6 +401,20 @@ end
 
 
 ---------------------------------- Helpers -------------------------------------
+
+-- TensorDesc related functions
+MPI.newTensorDesc = function(size)
+   return MPI.C.torchmpi_new_tensor_descriptor(size)
+end
+
+MPI.freeTensorDesc = function(tensorDesc)
+   return MPI.C.torchmpi_free_tensor_descriptor(tensorDesc)
+end
+
+MPI.resizeTensorFromDesc = function(tensor, tensorDesc)
+   local fun = 'torchmpi_resize_tensor_from_desc_TH'..torch.type(tensor):gsub('torch.', '')
+   return MPI.syncHandle(wrap.executeMPICFun(fun, tensor, tensorDesc))
+end
 
 -- Sets up a 2-level communicator below the current communicator:
 --   1. First-level is inter-(node, cudaIPC group)
