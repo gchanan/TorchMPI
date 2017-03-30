@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <iostream>
 #include <unordered_map>
+#include <vector>
 
 #include "resources.h"
 
@@ -212,14 +213,14 @@ void sendreceive(THCState* state, THTensorType* tensor, int src, int dst) {
 
 template<typename ScalarType>
 void allgather(ScalarType* input,
-               ScalarType* output,
+               std::vector<ScalarType>& output,
                size_t nElement,
                const CollectiveResourcesCuda* r) {
     r->comm->intraComm.Allgather(
       input,
       nElement,
       mpiType<ScalarType>(),
-      output,
+      output.data(),
       nElement,
       mpiType<ScalarType>());
   }
@@ -228,16 +229,16 @@ template<typename ScalarType>
 void allgatherv(ScalarType* input,
                 ScalarType* output,
                 size_t nElement,
-                int* counts,
-                int* displacements,
+                const std::vector<int>& counts,
+                const std::vector<int>& displacements,
                 const CollectiveResourcesCuda* r) {
   r->comm->intraComm.Allgatherv(
     input,
     nElement,
     mpiType<ScalarType>(),
     output,
-    counts,
-    displacements,
+    counts.data(),
+    displacements.data(),
     mpiType<ScalarType>());
 }
 
@@ -316,13 +317,13 @@ void allgather(THCState* state,
   PREPARE2(state, input, output, false);
 
   auto size = commSize(rOuter->comm->intraComm);
-  int counts[size];
+  std::vector<int> counts(size);
 
   // allgatherv takes int-typed counts / displacements
   int nElementInt = (int)nElement;
   allgather<int>(&nElementInt, counts, 1, rOuter);
 
-  int displacements[size];
+  std::vector<int> displacements(size);
   displacements[0] = 0;
   for (int i = 1; i < size; ++i) {
     displacements[i] = counts[i-1] + displacements[i-1];
