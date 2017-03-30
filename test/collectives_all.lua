@@ -375,7 +375,7 @@ tests.allgather.generate = function(size)
    input:fill(mpi.rank())
 
    local osize = tests.allgather.outputsize(start_size)
-   osize = config.inPlace and osize or osize / 2
+   osize = not config.inPlace and osize or osize / 2
    -- override meaning of inplace, because it doesn't make much sense for
    -- allgather.  Instead have it mean if the output needs to be ReAlloced.
    local output = config.gpu and torch.CudaTensor(osize) or torch.FloatTensor(osize)
@@ -394,7 +394,11 @@ tests.allgather.test = function(input, output, firstRun)
       asyncTimer:reset()
    end
 
-   local handle = ns.allgatherTensor(input, output)
+   local tensordesc = mpi.newTensorDesc(mpi.size())
+   ns.allgatherTensorDesc(input, tensordesc)
+   mpi.resizeTensorFromDesc(output, tensordesc)
+   local handle = ns.allgatherTensor(input, output, tensordesc)
+   mpi.freeTensorDesc(tensordesc)
 
    if config.async and not firstRun then
       asyncTimer:stop()
