@@ -489,6 +489,10 @@ configureCollectiveSelector = function()
                reduceTensor = MPI.reduceTensor,
                sendreceiveTensor = MPI.sendreceiveTensor,
                allgatherTensor = MPI.allgatherTensor,
+               -- include allgatherTensorDesc for convenience (so we can use selector e.g. ns.allgatherTensorDesc),
+               -- but don't print it because it's not a "real" collective.  Perhaps these tables should be reworked
+               -- to specify collective rather than collective + type (tensor/tensorDesc).
+               allgatherTensorDesc = MPI.allgatherTensorDesc,
             },
             async = {
                allreduceTensor = MPI.async.p2p.allreduceTensor or (MPI.gloo and MPI.async.gloo.allreduceTensor),
@@ -496,6 +500,7 @@ configureCollectiveSelector = function()
                reduceTensor = MPI.reduceTensor,           -- OpenMPI-1.8  async version seems bugged ??
                sendreceiveTensor = MPI.sendreceiveTensor, -- no async version
                allgatherTensor = MPI.allgatherTensor,
+               allgatherTensorDesc = MPI.allgatherTensorDesc,
             },
          },
          multinode = {
@@ -505,6 +510,7 @@ configureCollectiveSelector = function()
                reduceTensor = MPI.reduceTensor,
                sendreceiveTensor = MPI.sendreceiveTensor,
                allgatherTensor = MPI.allgatherTensor,
+               allgatherTensorDesc = MPI.allgatherTensorDesc,
             },
             async = {
                allreduceTensor = MPI.async.p2p.allreduceTensor or (MPI.gloo and MPI.async.gloo.allreduceTensor),
@@ -512,6 +518,7 @@ configureCollectiveSelector = function()
                reduceTensor = MPI.reduceTensor,           -- OpenMPI-1.8 async version seems bugged ??
                sendreceiveTensor = MPI.sendreceiveTensor, -- no async version
                allgatherTensor = MPI.allgatherTensor,
+               allgatherTensorDesc = MPI.allgatherTensorDesc,
             },
          },
       },
@@ -531,6 +538,7 @@ configureCollectiveSelector = function()
                reduceTensor = MPI.nccl and MPI.nccl.reduceTensor or MPI.reduceTensor,
                sendreceiveTensor = MPI.sendreceiveTensor,
                allgatherTensor = MPI.allgatherTensor,
+               allgatherTensorDesc = MPI.allgatherTensorDesc,
             },
             async = {
                allreduceTensor = MPI.ipcGroups and MPI.async.p2p.allreduceTensor
@@ -544,6 +552,7 @@ configureCollectiveSelector = function()
                reduceTensor = MPI.nccl and MPI.async.nccl.reduceTensor or MPI.reduceTensor, -- OpenMPI-1.8 async version seems bugged ??
                sendreceiveTensor = MPI.sendreceiveTensor, -- no async version
                allgatherTensor = MPI.allgatherTensor,
+               allgatherTensorDesc = MPI.allgatherTensorDesc,
             },
          },
          multinode = {
@@ -556,6 +565,7 @@ configureCollectiveSelector = function()
                reduceTensor = MPI.reduceTensor,
                sendreceiveTensor = MPI.sendreceiveTensor,
                allgatherTensor = MPI.allgatherTensor,
+               allgatherTensorDesc = MPI.allgatherTensorDesc,
             },
             async = {
                allreduceTensor = MPI.ipcGroups and MPI.async.p2p.allreduceTensor
@@ -567,6 +577,7 @@ configureCollectiveSelector = function()
                reduceTensor = MPI.reduceTensor,           -- OpenMPI-1.8 async version seems bugged ??
                sendreceiveTensor = MPI.sendreceiveTensor, -- no async version
                allgatherTensor = MPI.allgatherTensor,
+               allgatherTensorDesc = MPI.allgatherTensorDesc,
             },
          },
       },
