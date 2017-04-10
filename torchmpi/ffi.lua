@@ -154,9 +154,15 @@ local function declMPI(withCuda)
                [[(THCState* state, THCuda]] .. v .. [[Tensor* input, int src, int dst);
          ]]
          allgather_def = allgather_def .. [[
+            void torchmpi_allgatherdesc_THCuda]] .. v .. [[Tensor]] ..
+               [[(THCState* state, THCuda]] .. v .. [[Tensor* input, TensorDescHandle tensorDesc);
             void torchmpi_allgather_THCuda]] .. v .. [[Tensor]] ..
-               [[(THCState* state, THCuda]] .. v .. [[Tensor* input, THCuda]] .. v .. [[Tensor* output);
-         ]]
+               [[(THCState* state, THCuda]] .. v .. [[Tensor* input, THCuda]] .. v .. [[Tensor* output, TensorDescHandle tensorDesc);
+          ]]
+          resize_def = resize_def .. [[
+            void torchmpi_resize_tensor_from_desc_THCuda]] .. v .. [[Tensor]] ..
+               [[(THCState* state, THCuda]] .. v .. [[Tensor* t, TensorDescHandle tensorDesc);
+          ]]
       end
    end
 
