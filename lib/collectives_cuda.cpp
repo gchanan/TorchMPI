@@ -216,7 +216,7 @@ void sendreceive(THCState* state, THTensorType* tensor, int src, int dst) {
 
 template<typename ScalarType>
 void allgather(ScalarType* input,
-               ScalarType *output,
+               ScalarType* output,
                size_t nElement,
                const CollectiveResourcesCuda* r) {
     r->comm->intraComm.Allgather(
@@ -1149,6 +1149,150 @@ SynchronizationHandle* allreduceAsync(THCState* state,
     state, input, output, ncclRedOp);
 }
 
+template<typename ScalarType>
+cudaStream_t allgather(ScalarType* inputData,
+                       ScalarType* outputData,
+                       size_t nElement,
+                       cudaStream_t stream,
+                       const ncclComm_t& comm)
+{
+  int count, device, rank;
+  NCCLCHECK(ncclCommCount(comm, &count));
+  NCCLCHECK(ncclCommCuDevice(comm, &device));
+  NCCLCHECK(ncclCommUserRank(comm, &rank));
+  VLOG_1(" ncclAllGather device " << device << " rank " << rank
+         << "/" << count << std::endl);
+  NCCLCHECK(ncclAllGather(inputData,
+                          outputData,
+                          nElement,
+                          ncclType<ScalarType>(),
+                          comm,
+                          stream));
+  THCudaCheck(cudaGetLastError());
+  return stream;
+}
+
+template<typename ScalarType, typename THTensorType>
+SynchronizationHandle* allgatherdescImpl(THCState* state,
+                                         THTensorType* input,
+                                         TensorDesc *td)
+{
+  {
+    // Latency-bound, better go through stock MPI implementation
+    auto nElement = 1;
+    if (nElement <= constants::kSmallBcastSizeGPU) {
+      torch::mpi::thc::allgatherdesc<ScalarType>(state, input, td);
+      return THCState_getCurrentStream(state);
+    }
+  }
+  PREPARE_NCCL(state, input);
+
+  int size;
+  NCCLCHECK(ncclCommCount(*rInner->ncclComm, &size));
+  THAssert(size == td->size);
+  int nElementInt = (int)nElement;
+
+  if (hasInter) {
+    // Release before calling!
+    // TODO: ScopeGuard
+    releaseCollectiveResources(const_cast<CollectiveResourcesCuda*>(rInner));
+    releaseCollectiveResources(const_cast<CollectiveResourcesCuda*>(rOuter));
+    // For hierarchical broadcasts, participants need to agree on the root
+    // value for different communicators. We don't have that yet so just
+    // default to the mpi broadcast.
+    torch::mpi::thc::allgatherdesc<ScalarType>(state, input, td);
+    return stream;
+  }
+  nccl::thc::allgather(&nElementInt, td->counts.data(), 1, stream, *rInner->ncclComm);
+
+  td->displacements[0] = 0;
+  for (int i = 1; i < size; ++i) {
+    td->displacements[i] = td->counts[i-1] + td->displacements[i-1];
+  }
+  // TODO: ScopeGuard
+  releaseCollectiveResources(const_cast<CollectiveResourcesCuda*>(rInner));
+  releaseCollectiveResources(const_cast<CollectiveResourcesCuda*>(rOuter));
+  return stream;
+}
+
+template<typename ScalarType, typename THTensorType>
+SynchronizationHandle* allgatherImpl(THCState* state,
+                                     THTensorType* input,
+                                     THTensorType* output,
+                                     TensorDesc *td)
+{
+  {
+    // Latency-bound, better go through stock MPI implementation
+    auto nElement = torch::thc::nElement<THTensorType>(state, input);
+    if (nElement <= constants::kSmallBcastSizeGPU) {
+      torch::mpi::thc::allgather<ScalarType>(state, input, output, td);
+      return THCState_getCurrentStream(state);
+    }
+  }
+
+  PREPARE2_NCCL(state, input, output, false);
+  if (hasInter) {
+    // Release before calling!
+    // TODO: ScopeGuard
+    releaseCollectiveResources(const_cast<CollectiveResourcesCuda*>(rInner));
+    releaseCollectiveResources(const_cast<CollectiveResourcesCuda*>(rOuter));
+    // For hierarchical broadcasts, participants need to agree on the root
+    // value for different communicators. We don't have that yet so just
+    // default to the mpi broadcast.
+    torch::mpi::thc::allgather<ScalarType>(state, input, output, td);
+    return stream;
+  }
+  // nElement is wrong, need largest count
+  int maxCount = *std::max_element(td->counts.begin(), td->counts.end());
+  nccl::thc::allgather(inputData, outputData, maxCount, stream, *rInner->ncclComm);
+
+  td->displacements[0] = 0;
+  for (int i = 1; i < size; ++i) {
+    td->displacements[i] = td->counts[i-1] + td->displacements[i-1];
+  }
+  // TODO: creating a new tensor would be more efficient if we can't fit
+  // realloc, but changes API since we would need to return new tensor.
+  #define THC_RESIZE_TENSOR_FROM_DESC(THType)                                    \
+    void PPCAT(torchmpi_resize_tensor_from_desc_, THType)                        \
+    (THCState *state, THType *t, torch::mpi::resources::TensorDesc *td) {        \
+      auto size = td->size;                                                      \
+      int sizeNeeded = td->displacements[size - 1] + td->counts[size - 1];       \
+      if (sizeNeeded > nElement(state, t)) {                                     \
+        THLongStorage *storageCopy = newSizeOf(state, t);                        \
+                                                                                 \
+        long outerStride = stride(state, t, 0);                                  \
+        if ( (sizeNeeded % outerStride) != 0 ) {                                 \
+          THError("Size mismatch: assuming tensor gathered along last dimension" \
+                  ", but outer stride of %d doesn't divide total size of %d\n",  \
+                  outerStride, sizeNeeded);                                      \
+        }                                                                        \
+        storageCopy->data[t->nDimension - 1] = sizeNeeded / outerStride;         \
+        resizeNd(state, t, storageCopy->size, storageCopy->data, NULL);          \
+        THLongStorage_free(storageCopy);                                         \
+      }                                                                          \
+    }
+  // move into correct locations in tensor
+  for (int i = 1; i < size; ++i) {
+    output[]
+  }
+  // resize
+
+  // TODO: ScopeGuard
+  releaseCollectiveResources(const_cast<CollectiveResourcesCuda*>(rInner));
+  releaseCollectiveResources(const_cast<CollectiveResourcesCuda*>(rOuter));
+  return stream;
+}
+
+/*template<typename ScalarType, typename THTensorType>
+void allreduce(THCState* state,
+               THTensorType* input,
+               THTensorType* output,
+               ncclRedOp_t ncclRedOp) {
+  resources::wait(
+    nccl::thc::allreduceImpl<ScalarType, THTensorType>(
+      state, input, output, ncclRedOp));
+
+}*/
 
 }} // ns nccl::thc
 

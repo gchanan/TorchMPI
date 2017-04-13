@@ -506,6 +506,7 @@ local function setImplemented()
       tests.broadcast.implemented = mpi.hasNCCL
       tests.reduce.implemented = mpi.hasNCCL
       tests.allreduce.implemented = mpi.hasNCCL
+      tests.allgather.implemented = mpi.hasNCCL
    elseif config.tests == "gloo" then
       local implemented =
          (not mpi.gpu and mpi.hasGloo and config.inPlace) or

@@ -10,6 +10,7 @@
 
 #include <semaphore.h>
 
+#include <algorithm>
 #include <future>
 #include <string>
 #include <unordered_map>
